@@ -1,6 +1,56 @@
 # Snaply: Quick Edits, Stunning Results
 
-Snaply is a cutting-edge image editing app powered by AI that allows users to quickly transform their photos with stunning results. Built using Flutter, Snaply leverages the latest in AI image generation technology via Google's Gemini 2.0 Flash native image generation API. With in-app purchases to unlock premium features and effortless sharing to social media platforms like Instagram, TikTok, and Facebook, Snaply makes photo editing fun and accessible—without the hassle of login or signup.
+A premium, minimalistic Flutter app for AI-powered image editing, leveraging Google's Gemini 2.0 Flash API.
+
+## About Snaply
+
+Snaply is a cutting-edge image editing application that combines the power of artificial intelligence with an elegant, user-friendly interface. The app allows users to make quick edits to their images while delivering stunning, professional-quality results.
+
+## Design Philosophy
+
+Snaply's UI is built on a foundation of premium minimalism, featuring:
+
+- **Clean aesthetics** with refined neutrals and elegant accent colors
+- **Ample whitespace** for an uncluttered, sophisticated feel
+- **Intuitive interactions** that provide clear visual feedback
+- **Responsive layouts** that adapt seamlessly to various device sizes
+
+## Key Features
+
+- **AI-Powered Editing**: Utilize Google's Gemini 2.0 Flash API for intelligent image enhancement
+- **Chatbot Interface**: Interact conversationally with the AI for natural editing workflows
+- **Premium Experience**: Enjoy a sophisticated, high-end design that elevates the editing process
+- **Responsive Design**: Access a consistent experience across all mobile devices
+
+## UI Components
+
+The app's design system includes:
+
+- A comprehensive color palette with primary, secondary, and tertiary accents
+- Typography hierarchy using Poppins (for headings) and Inter (for body text)
+- Custom UI components including buttons, cards, and form elements
+- Consistent spacing and layout principles
+
+## Development
+
+### Dependencies
+
+- Flutter
+- google_fonts
+- flutter_animate
+- flutter_svg
+- provider
+- shared_preferences
+
+### Getting Started
+
+1. Clone the repository
+2. Run `flutter pub get` to install dependencies
+3. Run `flutter run` to launch the app
+
+## Design Documentation
+
+For detailed information about the UI design system, refer to the [Snaply UI Theme Guide](lib/theme/snaply_theme_guide.md).
 
 ## Table of Contents
 
@@ -79,7 +129,7 @@ For more detailed documentation, refer to the [Gemini 2.0 Flash API documentatio
 ## In-App Purchases
 
 - **Premium Features:** Additional filters, advanced editing options, and exclusive effects.
-- **Implementation:** Utilizes Flutter’s in-app purchase plugins to ensure a secure and smooth transaction process.
+- **Implementation:** Utilizes Flutter's in-app purchase plugins to ensure a secure and smooth transaction process.
 - **No Account Needed:** Users can purchase premium features without creating an account.
 
 ## Social Media Sharing

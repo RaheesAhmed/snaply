@@ -5,6 +5,8 @@
 *.swp
 .DS_Store
 .atom/
+what_has-done_so_far.md
+/prompts/
 .build/
 .buildlog/
 .history
@@ -27,6 +29,7 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+/docs
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
