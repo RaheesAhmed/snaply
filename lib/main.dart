@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'theme/snaply_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/theme_showcase.dart';
+import 'components/app_icon.dart';
 
 void main() {
   runApp(const SnaplyApp());
@@ -60,27 +61,8 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // App logo container with gradient background
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                    Theme.of(context).colorScheme.primary.withOpacity(0.25),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(40),
-              ),
-              child: Icon(
-                Icons.auto_fix_high,
-                size: 60,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+            // App logo with custom icon
+            AppIcon(size: 120),
             SizedBox(height: SnaplyTheme.spaceLG),
             // App title with premium typography
             Text(

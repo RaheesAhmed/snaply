@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/snaply_theme.dart';
+import '../components/app_icon.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -112,72 +113,15 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Animated logo container
+                      // Animated app icon
                       Transform.scale(
                         scale: _scaleAnimation.value,
                         child: FadeTransition(
                           opacity: _fadeInAnimation,
-                          child: Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  theme.colorScheme.primary.withOpacity(0.15),
-                                  theme.colorScheme.secondary.withOpacity(0.25),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(30),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: theme.colorScheme.primary
-                                      .withOpacity(0.1),
-                                  offset: const Offset(0, 4),
-                                  blurRadius: 12,
-                                ),
-                              ],
-                            ),
-                            child: Stack(
-                              children: [
-                                // Gleam effect
-                                AnimatedBuilder(
-                                  animation: _controller,
-                                  builder: (context, child) {
-                                    return Positioned(
-                                      left: -40 + (200 * _controller.value),
-                                      top: 0,
-                                      child: Transform(
-                                        transform: Matrix4.rotationZ(0.8),
-                                        child: Container(
-                                          width: 60,
-                                          height: 120,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                Colors.white.withOpacity(0),
-                                                Colors.white.withOpacity(0.3),
-                                                Colors.white.withOpacity(0),
-                                              ],
-                                              stops: const [0.0, 0.5, 1.0],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                // App icon
-                                Center(
-                                  child: Icon(
-                                    Icons.auto_fix_high,
-                                    size: 60,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
+                          child: AppIcon(
+                            size: 120,
+                            showGleam: true,
+                            animationController: _controller,
                           ),
                         ),
                       ),
