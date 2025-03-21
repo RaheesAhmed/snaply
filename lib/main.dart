@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'theme/snaply_theme.dart';
 import 'screens/splash_screen.dart';
-import 'screens/theme_showcase.dart';
 import 'screens/onboarding_screen.dart';
-import 'screens/home_screen.dart';
-import 'components/app_icon.dart';
+import 'screens/main_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -91,7 +89,7 @@ class _AppEntryState extends State<AppEntry> {
       );
     }
 
-    // After onboarding completes, show home screen
-    return const HomeScreen();
+    // After onboarding completes, show main screen with tabs
+    return const MainScreen();
   }
 }
