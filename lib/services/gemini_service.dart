@@ -22,7 +22,10 @@ class GeminiService {
   GeminiService._internal() {
     _apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
     if (_apiKey.isEmpty) {
-      debugPrint('Warning: GEMINI_API_KEY is not set in .env file');
+      debugPrint('ERROR: GEMINI_API_KEY is not set in .env file');
+    } else {
+      debugPrint(
+          'Gemini API initialized with key: ${_apiKey.substring(0, 4)}...');
     }
   }
 
@@ -31,8 +34,11 @@ class GeminiService {
   /// Returns a Future with the image data and description
   Future<GeminiImageResult?> generateImage(String prompt) async {
     try {
+      debugPrint('Generating image with prompt: "$prompt"');
+
       // Construct the URL with API key
       final url = '$_baseUrl/models/$_modelName:generateContent?key=$_apiKey';
+      debugPrint('Using endpoint: $url');
 
       // Create the request body
       final request = GeminiRequest(
@@ -52,49 +58,75 @@ class GeminiService {
         ),
       );
 
+      final requestJson = jsonEncode(request.toJson());
+      debugPrint(
+          'Request payload: ${requestJson.substring(0, min(100, requestJson.length))}...');
+
       // Send the request
+      debugPrint('Sending request to Gemini API...');
       final response = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(request.toJson()),
+        body: requestJson,
       );
 
       // Handle response
+      debugPrint('Received response with status code: ${response.statusCode}');
       if (response.statusCode == 200) {
+        debugPrint('Successful response received');
         final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('Response headers: ${response.headers}');
+        debugPrint('Response JSON: ${jsonResponse.keys.join(', ')}');
+
         final geminiResponse = GeminiResponse.fromJson(jsonResponse);
+        debugPrint(
+            'Parsed response: ${geminiResponse.candidates.length} candidates');
 
         // Process response to extract image and text
         if (geminiResponse.candidates.isNotEmpty) {
           final candidate = geminiResponse.candidates.first;
+          debugPrint(
+              'Processing first candidate, finish reason: ${candidate.finishReason}');
           String? description;
           Uint8List? imageData;
 
           for (final part in candidate.content.parts) {
             if (part.text != null) {
+              debugPrint(
+                  'Found text response: "${part.text!.substring(0, min(50, part.text!.length))}..."');
               description = part.text;
             }
             if (part.inlineData != null) {
+              debugPrint(
+                  'Found image data with mime type: ${part.inlineData!.mimeType}');
               // Decode base64 image
               imageData = base64Decode(part.inlineData!.data);
+              debugPrint('Decoded image data size: ${imageData.length} bytes');
             }
           }
 
           if (imageData != null) {
+            debugPrint('Returning image result with ${imageData.length} bytes');
             return GeminiImageResult(
               imageData: imageData,
               description: description ?? '',
             );
+          } else {
+            debugPrint('No image data found in response');
           }
+        } else {
+          debugPrint('No candidates found in response');
         }
       } else {
         debugPrint('Error: ${response.statusCode}');
-        debugPrint('Response: ${response.body}');
+        debugPrint('Response body: ${response.body}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Exception when calling Gemini API: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
 
+    debugPrint('Returning null from generateImage');
     return null;
   }
 
@@ -105,8 +137,11 @@ class GeminiService {
   Future<GeminiImageResult?> editImage(
       String imageBase64, String prompt) async {
     try {
+      debugPrint('Editing image with prompt: "$prompt"');
+
       // Construct the URL with API key
       final url = '$_baseUrl/models/$_modelName:generateContent?key=$_apiKey';
+      debugPrint('Using endpoint: $url');
 
       // Create the request body
       final request = GeminiRequest(
@@ -132,7 +167,11 @@ class GeminiService {
         ),
       );
 
+      debugPrint(
+          'Request created with image (${imageBase64.length} chars) and prompt: "$prompt"');
+
       // Send the request
+      debugPrint('Sending request to Gemini API...');
       final response = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
@@ -140,43 +179,67 @@ class GeminiService {
       );
 
       // Handle response
+      debugPrint('Received response with status code: ${response.statusCode}');
       if (response.statusCode == 200) {
+        debugPrint('Successful response received');
         final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('Response headers: ${response.headers}');
+        debugPrint('Response JSON: ${jsonResponse.keys.join(', ')}');
+
         final geminiResponse = GeminiResponse.fromJson(jsonResponse);
+        debugPrint(
+            'Parsed response: ${geminiResponse.candidates.length} candidates');
 
         // Process response to extract image and text
         if (geminiResponse.candidates.isNotEmpty) {
           final candidate = geminiResponse.candidates.first;
+          debugPrint(
+              'Processing first candidate, finish reason: ${candidate.finishReason}');
           String? description;
           Uint8List? imageData;
 
           for (final part in candidate.content.parts) {
             if (part.text != null) {
+              debugPrint(
+                  'Found text response: "${part.text!.substring(0, min(50, part.text!.length))}..."');
               description = part.text;
             }
             if (part.inlineData != null) {
+              debugPrint(
+                  'Found image data with mime type: ${part.inlineData!.mimeType}');
               // Decode base64 image
               imageData = base64Decode(part.inlineData!.data);
+              debugPrint('Decoded image data size: ${imageData.length} bytes');
             }
           }
 
           if (imageData != null) {
+            debugPrint('Returning image result with ${imageData.length} bytes');
             return GeminiImageResult(
               imageData: imageData,
               description: description ?? '',
             );
+          } else {
+            debugPrint('No image data found in response');
           }
+        } else {
+          debugPrint('No candidates found in response');
         }
       } else {
         debugPrint('Error: ${response.statusCode}');
-        debugPrint('Response: ${response.body}');
+        debugPrint('Response body: ${response.body}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('Exception when calling Gemini API: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
 
+    debugPrint('Returning null from editImage');
     return null;
   }
+
+  // Helper to get substring safely
+  int min(int a, int b) => a < b ? a : b;
 }
 
 /// Result class for Gemini image generation

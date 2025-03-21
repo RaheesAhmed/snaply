@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../theme/snaply_theme.dart';
 import 'components/chat_message.dart';
 import 'components/chat_input.dart';
 import 'components/image_upload_area.dart';
+import 'components/gemini_processor.dart';
 
 /// Edit tab with chatbot-style image editing interface
 class EditTab extends StatefulWidget {
@@ -16,7 +18,10 @@ class EditTab extends StatefulWidget {
 class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  final GeminiProcessor _geminiProcessor = GeminiProcessor();
   bool _isProcessing = false;
+  File? _selectedImage;
+  File? _processedImage;
 
   @override
   void initState() {
@@ -48,7 +53,9 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
   }
 
   void _handleImagePicked(String imagePath) {
+    final File imageFile = File(imagePath);
     setState(() {
+      _selectedImage = imageFile;
       _messages.add(ChatMessage(
         type: ChatMessageType.image,
         imagePath: imagePath,
@@ -67,9 +74,10 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
     });
   }
 
-  void _handleMessageSent(String message) {
+  void _handleMessageSent(String message) async {
     if (message.trim().isEmpty) return;
 
+    // Add user message
     setState(() {
       _messages.add(ChatMessage(
         type: ChatMessageType.text,
@@ -82,11 +90,74 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
 
     _scrollToBottom();
 
-    // Simulate AI processing
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      final String responseMessage = _generateResponse(message);
-      _addBotMessage(responseMessage);
-    });
+    // Process with Gemini
+    if (_selectedImage != null) {
+      // Show processing message
+      _addBotMessage("Processing your request...");
+
+      // Process the image
+      final result =
+          await _geminiProcessor.processImage(_selectedImage!, message);
+
+      if (result != null) {
+        _processedImage = result.imageFile;
+
+        // Add the processed image to chat
+        setState(() {
+          _messages.add(ChatMessage(
+            type: ChatMessageType.image,
+            imagePath: _processedImage!.path,
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+        });
+
+        _scrollToBottom();
+
+        // Add description if available
+        if (result.description.isNotEmpty) {
+          _addBotMessage(result.description);
+        } else {
+          _addBotMessage("Here's your edited image! How does it look?");
+        }
+      } else {
+        _addBotMessage(
+          "I'm sorry, I couldn't process your request. Please try again with a different instruction.",
+        );
+      }
+    } else {
+      // No image uploaded yet, try to generate one
+      _addBotMessage("Let me create an image based on your description...");
+
+      final result = await _geminiProcessor.generateImage(message);
+
+      if (result != null) {
+        _processedImage = result.imageFile;
+
+        // Add the generated image to chat
+        setState(() {
+          _messages.add(ChatMessage(
+            type: ChatMessageType.image,
+            imagePath: _processedImage!.path,
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+        });
+
+        _scrollToBottom();
+
+        // Add description if available
+        if (result.description.isNotEmpty) {
+          _addBotMessage(result.description);
+        } else {
+          _addBotMessage("Here's the image I created! What do you think?");
+        }
+      } else {
+        _addBotMessage(
+          "I'm sorry, I couldn't generate an image from your description. Please try again with a different prompt.",
+        );
+      }
+    }
   }
 
   void _addBotMessage(String message, {bool isWelcome = false}) {
@@ -102,20 +173,6 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
     });
 
     _scrollToBottom();
-  }
-
-  String _generateResponse(String userMessage) {
-    // This would be replaced with actual Gemini API calls
-    final lowerMessage = userMessage.toLowerCase();
-
-    if (lowerMessage.contains('background')) {
-      return "I'll remove the background for you. Give me a moment...";
-    } else if (lowerMessage.contains('vibrant') ||
-        lowerMessage.contains('color')) {
-      return "I'll enhance the colors to make your image more vibrant. Processing...";
-    } else {
-      return "I'll apply your requested edit. Give me a moment to process...";
-    }
   }
 
   void _handleShowImagePicker() {
@@ -241,8 +298,8 @@ class MessageBubble extends StatelessWidget {
                 )
               : ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: Image.asset(
-                    message.imagePath!,
+                  child: Image.file(
+                    File(message.imagePath!),
                     fit: BoxFit.cover,
                   ),
                 ),
