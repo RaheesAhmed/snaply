@@ -1,9 +1,8 @@
-import 'package:flutter/material.dart';
-
 /// Types of chat messages in the edit interface
 enum ChatMessageType {
   text,
   image,
+  textWithImage,
 }
 
 /// Model class for chat messages in the edit interface

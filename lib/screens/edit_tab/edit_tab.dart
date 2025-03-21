@@ -26,12 +26,7 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-
-    // Add welcome message
-    _addBotMessage(
-      "Upload an image and tell me how you'd like to edit it.",
-      isWelcome: true,
-    );
+    // No welcome message - let the UI start clean
   }
 
   @override
@@ -62,16 +57,10 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
         isUser: true,
         timestamp: DateTime.now(),
       ));
+      // No automatic response after image upload
     });
 
     _scrollToBottom();
-
-    // Add a response after image is uploaded
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _addBotMessage(
-        "Great! Now tell me how you'd like to edit this image. For example, 'Remove the background' or 'Make it look more vibrant'.",
-      );
-    });
   }
 
   void _handleMessageSent(String message) async {
@@ -92,87 +81,73 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
 
     // Process with Gemini
     if (_selectedImage != null) {
-      // Show processing message
-      _addBotMessage("Processing your request...");
-
-      // Process the image
+      // Process the image without showing processing message
       final result =
           await _geminiProcessor.processImage(_selectedImage!, message);
 
       if (result != null) {
         _processedImage = result.imageFile;
 
-        // Add the processed image to chat
+        // Add the processed image with text to chat
         setState(() {
           _messages.add(ChatMessage(
-            type: ChatMessageType.image,
+            type: ChatMessageType.textWithImage,
+            text: result.description,
             imagePath: _processedImage!.path,
             isUser: false,
             timestamp: DateTime.now(),
           ));
+          _isProcessing = false;
         });
 
         _scrollToBottom();
-
-        // Add description if available
-        if (result.description.isNotEmpty) {
-          _addBotMessage(result.description);
-        } else {
-          _addBotMessage("Here's your edited image! How does it look?");
-        }
       } else {
-        _addBotMessage(
-          "I'm sorry, I couldn't process your request. Please try again with a different instruction.",
-        );
+        // Only add a minimal error message if API fails completely
+        setState(() {
+          _messages.add(ChatMessage(
+            type: ChatMessageType.text,
+            text: "Failed to process image. Try again.",
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+          _isProcessing = false;
+        });
+        _scrollToBottom();
       }
     } else {
-      // No image uploaded yet, try to generate one
-      _addBotMessage("Let me create an image based on your description...");
-
+      // No image uploaded yet, generate one without showing processing message
       final result = await _geminiProcessor.generateImage(message);
 
       if (result != null) {
         _processedImage = result.imageFile;
 
-        // Add the generated image to chat
+        // Add the generated image with text to chat
         setState(() {
           _messages.add(ChatMessage(
-            type: ChatMessageType.image,
+            type: ChatMessageType.textWithImage,
+            text: result.description,
             imagePath: _processedImage!.path,
             isUser: false,
             timestamp: DateTime.now(),
           ));
+          _isProcessing = false;
         });
 
         _scrollToBottom();
-
-        // Add description if available
-        if (result.description.isNotEmpty) {
-          _addBotMessage(result.description);
-        } else {
-          _addBotMessage("Here's the image I created! What do you think?");
-        }
       } else {
-        _addBotMessage(
-          "I'm sorry, I couldn't generate an image from your description. Please try again with a different prompt.",
-        );
+        // Only add a minimal error message if API fails completely
+        setState(() {
+          _messages.add(ChatMessage(
+            type: ChatMessageType.text,
+            text: "Failed to generate image. Try again.",
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+          _isProcessing = false;
+        });
+        _scrollToBottom();
       }
     }
-  }
-
-  void _addBotMessage(String message, {bool isWelcome = false}) {
-    setState(() {
-      _messages.add(ChatMessage(
-        type: ChatMessageType.text,
-        text: message,
-        isUser: false,
-        timestamp: DateTime.now(),
-        isAnimated: true,
-      ));
-      _isProcessing = false;
-    });
-
-    _scrollToBottom();
   }
 
   void _handleShowImagePicker() {
@@ -278,33 +253,70 @@ class MessageBubble extends StatelessWidget {
             left: isUser ? SnaplyTheme.spaceLG : 0,
             right: isUser ? 0 : SnaplyTheme.spaceLG,
           ),
-          padding: message.type == ChatMessageType.text
-              ? const EdgeInsets.all(SnaplyTheme.spaceSM)
-              : EdgeInsets.zero,
+          padding: message.type == ChatMessageType.image
+              ? EdgeInsets.zero
+              : const EdgeInsets.all(SnaplyTheme.spaceSM),
           decoration: BoxDecoration(
             color: isUser
                 ? theme.colorScheme.primary
                 : theme.colorScheme.surfaceVariant,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: message.type == ChatMessageType.text
-              ? Text(
+          child: _buildMessageContent(context, theme),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageContent(BuildContext context, ThemeData theme) {
+    final isUser = message.isUser;
+
+    switch (message.type) {
+      case ChatMessageType.text:
+        return Text(
+          message.text!,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: isUser
+                ? theme.colorScheme.onPrimary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        );
+
+      case ChatMessageType.image:
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.file(
+            File(message.imagePath!),
+            fit: BoxFit.cover,
+          ),
+        );
+
+      case ChatMessageType.textWithImage:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message.text != null && message.text!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: SnaplyTheme.spaceSM),
+                child: Text(
                   message.text!,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: isUser
                         ? theme.colorScheme.onPrimary
                         : theme.colorScheme.onSurfaceVariant,
                   ),
-                )
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.file(
-                    File(message.imagePath!),
-                    fit: BoxFit.cover,
-                  ),
                 ),
-        ),
-      ),
-    );
+              ),
+            if (message.imagePath != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(message.imagePath!),
+                  fit: BoxFit.cover,
+                ),
+              ),
+          ],
+        );
+    }
   }
 }
