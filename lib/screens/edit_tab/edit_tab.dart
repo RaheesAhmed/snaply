@@ -235,29 +235,85 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
   // Download image to user's device
   Future<void> _downloadImage(File imageFile) async {
     try {
-      final directory = await getExternalStorageDirectory();
-      if (directory != null) {
-        final String fileName = 'snaply_${const Uuid().v4()}.png';
-        final String filePath = '${directory.path}/$fileName';
-
-        // Copy the file to downloads folder
-        await imageFile.copy(filePath);
+      // First approach: Try to save directly to the gallery
+      try {
+        await _galleryService.saveImageWithFallback(
+          imageFile,
+          "Downloaded image",
+          DateTime.now(),
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Image saved to $filePath'),
+              content: const Text('Image saved to gallery'),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () {
+                  // Navigate to gallery tab
+                  DefaultTabController.of(context)?.animateTo(2);
+                },
+              ),
               backgroundColor: Theme.of(context).colorScheme.secondary,
+            ),
+          );
+        }
+        return; // Exit early if successful
+      } catch (e) {
+        debugPrint('Primary save method failed: $e');
+        // Continue to fallback method
+      }
+
+      // Fallback approach: Create a copy in memory and save to gallery
+      try {
+        // Create a temporary file in memory with the same bytes
+        final bytes = await imageFile.readAsBytes();
+
+        // Get temporary directory which is usually more reliable
+        final tempDir = Directory.systemTemp;
+        final tempFile = File(
+            '${tempDir.path}/snaply_temp_${DateTime.now().millisecondsSinceEpoch}.png');
+        await tempFile.writeAsBytes(bytes);
+
+        // Now save this copy to gallery
+        await _galleryService.saveImageWithFallback(
+          tempFile,
+          "Downloaded image",
+          DateTime.now(),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Image saved to gallery'),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () {
+                  DefaultTabController.of(context)?.animateTo(2);
+                },
+              ),
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+            ),
+          );
+        }
+      } catch (e) {
+        // If all approaches fail, show error
+        debugPrint('All save methods failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save image: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
         }
       }
     } catch (e) {
-      debugPrint('Error downloading image: $e');
+      debugPrint('Error in _downloadImage: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to download image: $e'),
+            content: Text('Error: $e'),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -456,6 +512,37 @@ class MessageBubble extends StatelessWidget {
           child: Image.file(
             File(message.imagePath!),
             fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint('Error loading image: $error');
+              return Container(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                height: 200,
+                width: double.infinity,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.broken_image_outlined,
+                      size: 48,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant
+                          .withOpacity(0.5),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Image could not be loaded',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withOpacity(0.7),
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         );
 
@@ -489,6 +576,33 @@ class MessageBubble extends StatelessWidget {
                       child: Image.file(
                         File(message.imagePath!),
                         fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          debugPrint('Error loading image: $error');
+                          return Container(
+                            color: theme.colorScheme.surfaceVariant,
+                            height: 200,
+                            width: double.infinity,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 48,
+                                  color: theme.colorScheme.onSurfaceVariant
+                                      .withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Image could not be loaded',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant
+                                        .withOpacity(0.7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
                     if (!isUser)

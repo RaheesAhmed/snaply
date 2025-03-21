@@ -52,7 +52,7 @@ class GalleryService {
 
   GalleryService._internal();
 
-  /// Save an image to the gallery
+  /// Save an image to the gallery (original method)
   Future<GalleryImage> saveImage(
     String originalPath,
     String description,
@@ -73,10 +73,29 @@ class GalleryService {
 
       // Copy the image to the gallery directory with a unique name
       final File originalFile = File(originalPath);
-      final String extension = originalPath.split('.').last;
-      final String newPath = '${galleryDir.path}/$id.$extension';
+
+      // Check if the original file exists
+      if (!await originalFile.exists()) {
+        debugPrint('Warning: Original file does not exist at $originalPath');
+        throw Exception('Original file not found');
+      }
+
+      final String extension = originalPath.split('.').last.toLowerCase();
+      // Ensure a valid extension (default to png if not recognized)
+      final String validExtension =
+          ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)
+              ? extension
+              : 'png';
+
+      final String newPath = '${galleryDir.path}/$id.$validExtension';
 
       await originalFile.copy(newPath);
+
+      // Verify the copy succeeded
+      final File newFile = File(newPath);
+      if (!await newFile.exists()) {
+        throw Exception('Failed to copy image to gallery');
+      }
 
       // Create a gallery image object
       final galleryImage = GalleryImage(
@@ -93,6 +112,103 @@ class GalleryService {
       return galleryImage;
     } catch (e) {
       debugPrint('Error saving image to gallery: $e');
+      // Try the fallback method
+      try {
+        final imageFile = File(originalPath);
+        return await saveImageWithFallback(imageFile, description, timestamp);
+      } catch (fallbackError) {
+        debugPrint('Fallback also failed: $fallbackError');
+        rethrow;
+      }
+    }
+  }
+
+  /// Save an image to the gallery with fallback mechanisms
+  Future<GalleryImage> saveImageWithFallback(
+    File imageFile,
+    String description,
+    DateTime timestamp,
+  ) async {
+    try {
+      // Create a unique ID for the image
+      final id = _uuid.v4();
+
+      // First try the standard method using the application documents directory
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final galleryDir = Directory('${appDir.path}/gallery');
+
+        // Ensure gallery directory exists
+        if (!await galleryDir.exists()) {
+          await galleryDir.create(recursive: true);
+        }
+
+        // Verify source image exists
+        if (!await imageFile.exists()) {
+          throw Exception('Source image file does not exist');
+        }
+
+        // Use a safe extension
+        final String extension = imageFile.path.split('.').last.toLowerCase();
+        final String validExtension =
+            ['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)
+                ? extension
+                : 'png';
+
+        final String newPath = '${galleryDir.path}/$id.$validExtension';
+
+        // Copy the file
+        await imageFile.copy(newPath);
+
+        // Verify the copy succeeded
+        final newFile = File(newPath);
+        if (!await newFile.exists()) {
+          throw Exception('Failed to copy image to gallery');
+        }
+
+        // Create a gallery image object and save metadata
+        final galleryImage = GalleryImage(
+          id: id,
+          path: newPath,
+          description: description,
+          timestamp: timestamp,
+        );
+
+        await _saveMetadata(galleryImage);
+        return galleryImage;
+      } catch (e) {
+        debugPrint('Primary gallery save method failed: $e');
+        // Continue to fallback method
+      }
+
+      // Fallback: Use system temp directory which is more reliable
+      final tempDir = Directory.systemTemp;
+      final galleryDir = Directory('${tempDir.path}/snaply_gallery');
+
+      if (!await galleryDir.exists()) {
+        await galleryDir.create(recursive: true);
+      }
+
+      // Read source image bytes
+      final bytes = await imageFile.readAsBytes();
+
+      // Write to new location
+      final String newPath = '${galleryDir.path}/$id.png';
+      final newFile = File(newPath);
+      await newFile.writeAsBytes(bytes);
+
+      // Create a gallery image and save metadata
+      final galleryImage = GalleryImage(
+        id: id,
+        path: newPath,
+        description: description,
+        timestamp: timestamp,
+      );
+
+      await _saveMetadata(galleryImage);
+      return galleryImage;
+    } catch (e) {
+      debugPrint('Error in saveImageWithFallback: $e');
       rethrow;
     }
   }
