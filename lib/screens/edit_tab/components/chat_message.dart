@@ -3,6 +3,7 @@ enum ChatMessageType {
   text,
   image,
   textWithImage,
+  processing,
 }
 
 /// Model class for chat messages in the edit interface

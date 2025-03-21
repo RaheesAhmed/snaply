@@ -6,13 +6,16 @@ import '../../../services/gemini_service.dart';
 /// A utility class to handle image processing with Gemini API
 class GeminiProcessor {
   final GeminiService _geminiService = GeminiService();
+  String? _lastPrompt; // Store the last prompt for context
 
   /// Process an image with the given prompt
   /// Returns the processed image as a File or null if processing failed
   Future<ProcessedImageResult?> processImage(
       File imageFile, String prompt) async {
     try {
-      debugPrint('Starting image processing with prompt: $prompt');
+      // Append previous context if available
+      final contextualPrompt = _buildContextualPrompt(prompt);
+      debugPrint('Starting image processing with prompt: $contextualPrompt');
 
       // Convert image to base64
       final bytes = await imageFile.readAsBytes();
@@ -22,24 +25,36 @@ class GeminiProcessor {
 
       // Call Gemini API
       debugPrint('Calling Gemini editImage API...');
-      final result = await _geminiService.editImage(base64Image, prompt);
+      final result =
+          await _geminiService.editImage(base64Image, contextualPrompt);
+
+      // Update last prompt
+      _lastPrompt = prompt;
 
       if (result != null) {
         debugPrint('Received response from Gemini API');
         debugPrint('Description: ${result.description}');
-        debugPrint(
-            'Image data received, size: ${result.imageData.length} bytes');
 
-        // Save the processed image to a temporary file
-        final tempDir = Directory.systemTemp.createTempSync();
-        final tempFile = File('${tempDir.path}/processed_image.png');
-        await tempFile.writeAsBytes(result.imageData);
-        debugPrint('Processed image saved to: ${tempFile.path}');
+        if (result.isTextOnly) {
+          debugPrint('Text-only response received');
+          return ProcessedImageResult(
+            description: result.description,
+            isTextOnly: true,
+          );
+        } else {
+          debugPrint(
+              'Image data received, size: ${result.imageData.length} bytes');
+          // Save the processed image to a temporary file
+          final tempDir = Directory.systemTemp.createTempSync();
+          final tempFile = File('${tempDir.path}/processed_image.png');
+          await tempFile.writeAsBytes(result.imageData);
+          debugPrint('Processed image saved to: ${tempFile.path}');
 
-        return ProcessedImageResult(
-          imageFile: tempFile,
-          description: result.description,
-        );
+          return ProcessedImageResult(
+            imageFile: tempFile,
+            description: result.description,
+          );
+        }
       } else {
         debugPrint('Gemini API returned null result');
       }
@@ -49,6 +64,16 @@ class GeminiProcessor {
     }
 
     return null;
+  }
+
+  /// Build a prompt that includes context from previous interactions
+  String _buildContextualPrompt(String newPrompt) {
+    if (_lastPrompt == null) {
+      return newPrompt;
+    }
+
+    // Create a prompt that maintains conversation context
+    return "Based on our previous conversation where I asked to '$_lastPrompt', now I want to: $newPrompt";
   }
 
   /// Generate an image from a text prompt
@@ -61,22 +86,33 @@ class GeminiProcessor {
       debugPrint('Calling Gemini generateImage API...');
       final result = await _geminiService.generateImage(prompt);
 
+      // Update last prompt for potential follow-ups
+      _lastPrompt = prompt;
+
       if (result != null) {
         debugPrint('Received response from Gemini API');
         debugPrint('Description: ${result.description}');
-        debugPrint(
-            'Image data received, size: ${result.imageData.length} bytes');
 
-        // Save the generated image to a temporary file
-        final tempDir = Directory.systemTemp.createTempSync();
-        final tempFile = File('${tempDir.path}/generated_image.png');
-        await tempFile.writeAsBytes(result.imageData);
-        debugPrint('Generated image saved to: ${tempFile.path}');
+        if (result.isTextOnly) {
+          debugPrint('Text-only response received');
+          return ProcessedImageResult(
+            description: result.description,
+            isTextOnly: true,
+          );
+        } else {
+          debugPrint(
+              'Image data received, size: ${result.imageData.length} bytes');
+          // Save the generated image to a temporary file
+          final tempDir = Directory.systemTemp.createTempSync();
+          final tempFile = File('${tempDir.path}/generated_image.png');
+          await tempFile.writeAsBytes(result.imageData);
+          debugPrint('Generated image saved to: ${tempFile.path}');
 
-        return ProcessedImageResult(
-          imageFile: tempFile,
-          description: result.description,
-        );
+          return ProcessedImageResult(
+            imageFile: tempFile,
+            description: result.description,
+          );
+        }
       } else {
         debugPrint('Gemini API returned null result');
       }
@@ -91,11 +127,13 @@ class GeminiProcessor {
 
 /// Result of image processing
 class ProcessedImageResult {
-  final File imageFile;
+  final File? imageFile;
   final String description;
+  final bool isTextOnly;
 
   ProcessedImageResult({
-    required this.imageFile,
+    this.imageFile,
     required this.description,
+    this.isTextOnly = false,
   });
 }

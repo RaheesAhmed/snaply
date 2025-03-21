@@ -56,6 +56,12 @@ class GeminiService {
           maxOutputTokens: 8192,
           responseModalities: ['image', 'text'],
         ),
+        safetySettings: [
+          SafetySetting(
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE",
+          ),
+        ],
       );
 
       final requestJson = jsonEncode(request.toJson());
@@ -111,8 +117,15 @@ class GeminiService {
               imageData: imageData,
               description: description ?? '',
             );
+          } else if (description != null && description.isNotEmpty) {
+            debugPrint('No image data found, but returning text-only response');
+            return GeminiImageResult(
+              imageData: Uint8List(0),
+              description: description,
+              isTextOnly: true,
+            );
           } else {
-            debugPrint('No image data found in response');
+            debugPrint('No image data or text found in response');
           }
         } else {
           debugPrint('No candidates found in response');
@@ -143,7 +156,7 @@ class GeminiService {
       final url = '$_baseUrl/models/$_modelName:generateContent?key=$_apiKey';
       debugPrint('Using endpoint: $url');
 
-      // Create the request body
+      // Create the request body with proper mime type and encoding for image data
       final request = GeminiRequest(
         contents: [
           Content(
@@ -165,6 +178,12 @@ class GeminiService {
           maxOutputTokens: 8192,
           responseModalities: ['image', 'text'],
         ),
+        safetySettings: [
+          SafetySetting(
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_MEDIUM_AND_ABOVE",
+          ),
+        ],
       );
 
       debugPrint(
@@ -219,8 +238,15 @@ class GeminiService {
               imageData: imageData,
               description: description ?? '',
             );
+          } else if (description != null && description.isNotEmpty) {
+            debugPrint('No image data found, but returning text-only response');
+            return GeminiImageResult(
+              imageData: Uint8List(0),
+              description: description,
+              isTextOnly: true,
+            );
           } else {
-            debugPrint('No image data found in response');
+            debugPrint('No image data or text found in response');
           }
         } else {
           debugPrint('No candidates found in response');
@@ -246,9 +272,11 @@ class GeminiService {
 class GeminiImageResult {
   final Uint8List imageData;
   final String description;
+  final bool isTextOnly;
 
   GeminiImageResult({
     required this.imageData,
     required this.description,
+    this.isTextOnly = false,
   });
 }

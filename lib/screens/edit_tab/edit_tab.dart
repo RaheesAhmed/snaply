@@ -1,7 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../theme/snaply_theme.dart';
+import '../../services/gallery_service.dart';
+import '../../services/event_bus.dart';
 import 'components/chat_message.dart';
 import 'components/chat_input.dart';
 import 'components/image_upload_area.dart';
@@ -19,19 +25,30 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final GeminiProcessor _geminiProcessor = GeminiProcessor();
+  final GalleryService _galleryService = GalleryService();
+  late final StreamSubscription<AppEvent> _eventSubscription;
   bool _isProcessing = false;
   File? _selectedImage;
   File? _processedImage;
+  File? _activeImage; // Track the active image for continued edits
 
   @override
   void initState() {
     super.initState();
-    // No welcome message - let the UI start clean
+
+    // Listen for events
+    _eventSubscription = EventBus().events.listen((event) {
+      if (event.type == EventType.editImage && event.data is File) {
+        final File imageFile = event.data as File;
+        _handleImagePicked(imageFile.path);
+      }
+    });
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _eventSubscription.cancel();
     super.dispose();
   }
 
@@ -51,6 +68,7 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
     final File imageFile = File(imagePath);
     setState(() {
       _selectedImage = imageFile;
+      _activeImage = imageFile; // Set as active image
       _messages.add(ChatMessage(
         type: ChatMessageType.image,
         imagePath: imagePath,
@@ -79,24 +97,56 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
 
     _scrollToBottom();
 
+    // Add a placeholder for the processing image
+    int processingIndex = _messages.length;
+    setState(() {
+      _messages.add(ChatMessage(
+        type: ChatMessageType.processing,
+        text: "Processing...",
+        isUser: false,
+        timestamp: DateTime.now(),
+      ));
+    });
+    _scrollToBottom();
+
     // Process with Gemini
-    if (_selectedImage != null) {
-      // Process the image without showing processing message
+    if (_activeImage != null) {
+      // Process the image
       final result =
-          await _geminiProcessor.processImage(_selectedImage!, message);
+          await _geminiProcessor.processImage(_activeImage!, message);
+
+      // Remove the processing message
+      setState(() {
+        _messages.removeAt(processingIndex);
+      });
 
       if (result != null) {
-        _processedImage = result.imageFile;
-
-        // Add the processed image with text to chat
         setState(() {
-          _messages.add(ChatMessage(
-            type: ChatMessageType.textWithImage,
-            text: result.description,
-            imagePath: _processedImage!.path,
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          if (result.isTextOnly) {
+            // For text-only responses
+            _messages.add(ChatMessage(
+              type: ChatMessageType.text,
+              text: result.description,
+              isUser: false,
+              timestamp: DateTime.now(),
+            ));
+          } else {
+            // For responses with both text and image
+            _processedImage = result.imageFile;
+            _activeImage =
+                result.imageFile; // Update active image to the processed one
+
+            // Save to gallery
+            _saveToGallery(_processedImage!, result.description);
+
+            _messages.add(ChatMessage(
+              type: ChatMessageType.textWithImage,
+              text: result.description,
+              imagePath: _processedImage!.path,
+              isUser: false,
+              timestamp: DateTime.now(),
+            ));
+          }
           _isProcessing = false;
         });
 
@@ -115,21 +165,40 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
         _scrollToBottom();
       }
     } else {
-      // No image uploaded yet, generate one without showing processing message
+      // No image uploaded yet, generate one
       final result = await _geminiProcessor.generateImage(message);
 
-      if (result != null) {
-        _processedImage = result.imageFile;
+      // Remove the processing message
+      setState(() {
+        _messages.removeAt(processingIndex);
+      });
 
-        // Add the generated image with text to chat
+      if (result != null) {
         setState(() {
-          _messages.add(ChatMessage(
-            type: ChatMessageType.textWithImage,
-            text: result.description,
-            imagePath: _processedImage!.path,
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          if (result.isTextOnly) {
+            // For text-only responses
+            _messages.add(ChatMessage(
+              type: ChatMessageType.text,
+              text: result.description,
+              isUser: false,
+              timestamp: DateTime.now(),
+            ));
+          } else {
+            // For responses with both text and image
+            _processedImage = result.imageFile;
+            _activeImage = result.imageFile; // Set as active image
+
+            // Save to gallery
+            _saveToGallery(_processedImage!, result.description);
+
+            _messages.add(ChatMessage(
+              type: ChatMessageType.textWithImage,
+              text: result.description,
+              imagePath: _processedImage!.path,
+              isUser: false,
+              timestamp: DateTime.now(),
+            ));
+          }
           _isProcessing = false;
         });
 
@@ -146,6 +215,52 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
           _isProcessing = false;
         });
         _scrollToBottom();
+      }
+    }
+  }
+
+  // Save image to gallery
+  Future<void> _saveToGallery(File imageFile, String description) async {
+    try {
+      await _galleryService.saveImage(
+        imageFile.path,
+        description,
+        DateTime.now(),
+      );
+    } catch (e) {
+      debugPrint('Error saving to gallery: $e');
+    }
+  }
+
+  // Download image to user's device
+  Future<void> _downloadImage(File imageFile) async {
+    try {
+      final directory = await getExternalStorageDirectory();
+      if (directory != null) {
+        final String fileName = 'snaply_${const Uuid().v4()}.png';
+        final String filePath = '${directory.path}/$fileName';
+
+        // Copy the file to downloads folder
+        await imageFile.copy(filePath);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Image saved to $filePath'),
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error downloading image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to download image: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     }
   }
@@ -215,7 +330,10 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
                     return Padding(
                       padding:
                           const EdgeInsets.only(bottom: SnaplyTheme.spaceSM),
-                      child: MessageBubble(message: message),
+                      child: MessageBubble(
+                        message: message,
+                        onImageTap: (file) => _downloadImage(file),
+                      ),
                     );
                   },
                 ),
@@ -232,13 +350,63 @@ class _EditTabState extends State<EditTab> with TickerProviderStateMixin {
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage message;
+  final Function(File)? onImageTap;
 
-  const MessageBubble({super.key, required this.message});
+  const MessageBubble({
+    super.key,
+    required this.message,
+    this.onImageTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUser = message.isUser;
+
+    // Special handling for processing messages
+    if (message.type == ChatMessageType.processing) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          margin: const EdgeInsets.only(
+            top: SnaplyTheme.spaceXS,
+            bottom: SnaplyTheme.spaceXS,
+          ),
+          padding: const EdgeInsets.all(SnaplyTheme.spaceSM),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Processing your request...",
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: SnaplyTheme.spaceXS),
+              Shimmer.fromColors(
+                baseColor: theme.colorScheme.surfaceVariant,
+                highlightColor: theme.colorScheme.surface,
+                child: Container(
+                  height: 150,
+                  width: 200,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -308,15 +476,47 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             if (message.imagePath != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(message.imagePath!),
-                  fit: BoxFit.cover,
+              GestureDetector(
+                onTap: () {
+                  if (!isUser && onImageTap != null) {
+                    onImageTap!(File(message.imagePath!));
+                  }
+                },
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(message.imagePath!),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    if (!isUser)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withOpacity(0.8),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.download,
+                            size: 16,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
           ],
         );
+
+      case ChatMessageType.processing:
+        // This is handled in the build method
+        return const SizedBox.shrink();
     }
   }
 }

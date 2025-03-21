@@ -1,51 +1,117 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/gallery_service.dart';
+import '../../services/event_bus.dart';
 import '../../theme/snaply_theme.dart';
 
 /// Gallery tab displaying user's edited images
-class GalleryTab extends StatelessWidget {
+class GalleryTab extends StatefulWidget {
   const GalleryTab({super.key});
+
+  @override
+  State<GalleryTab> createState() => _GalleryTabState();
+}
+
+class _GalleryTabState extends State<GalleryTab> {
+  final GalleryService _galleryService = GalleryService();
+  List<GalleryImage> _images = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGalleryImages();
+  }
+
+  Future<void> _loadGalleryImages() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final images = await _galleryService.getAllImages();
+      setState(() {
+        _images = images;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading gallery images: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _deleteImage(String imageId) async {
+    try {
+      final success = await _galleryService.deleteImage(imageId);
+      if (success) {
+        setState(() {
+          _images.removeWhere((img) => img.id == imageId);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image deleted successfully')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error deleting image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete image: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Placeholder for edited images
-    // In a real app, these would be loaded from local storage
-    final List<String> mockImages = [];
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    if (mockImages.isEmpty) {
+    if (_images.isEmpty) {
       return _buildEmptyState(context);
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(SnaplyTheme.spaceMD),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Your Gallery',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: SnaplyTheme.spaceMD),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: SnaplyTheme.spaceSM,
-                mainAxisSpacing: SnaplyTheme.spaceSM,
+    return RefreshIndicator(
+      onRefresh: _loadGalleryImages,
+      child: Padding(
+        padding: const EdgeInsets.all(SnaplyTheme.spaceMD),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your Gallery',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
               ),
-              itemCount: mockImages.length,
-              itemBuilder: (context, index) {
-                return GalleryItem(
-                  imagePath: mockImages[index],
-                  onTap: () => _showImageDetails(context, mockImages[index]),
-                );
-              },
             ),
-          ),
-        ],
+            const SizedBox(height: SnaplyTheme.spaceMD),
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: SnaplyTheme.spaceSM,
+                  mainAxisSpacing: SnaplyTheme.spaceSM,
+                ),
+                itemCount: _images.length,
+                itemBuilder: (context, index) {
+                  final image = _images[index];
+                  return GalleryItem(
+                    imagePath: image.path,
+                    onTap: () => _showImageDetails(context, image),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -102,7 +168,7 @@ class GalleryTab extends StatelessWidget {
     );
   }
 
-  void _showImageDetails(BuildContext context, String imagePath) {
+  void _showImageDetails(BuildContext context, GalleryImage image) {
     final theme = Theme.of(context);
 
     showModalBottomSheet(
@@ -141,9 +207,25 @@ class GalleryTab extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: Image.asset(
-                        imagePath,
+                      child: Image.file(
+                        File(image.path),
                         fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(height: SnaplyTheme.spaceMD),
+                    if (image.description.isNotEmpty)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(bottom: SnaplyTheme.spaceMD),
+                        child: Text(
+                          image.description,
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                      ),
+                    Text(
+                      'Created: ${_formatDate(image.timestamp)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onBackground.withOpacity(0.6),
                       ),
                     ),
                     const SizedBox(height: SnaplyTheme.spaceMD),
@@ -154,7 +236,7 @@ class GalleryTab extends StatelessWidget {
                           icon: Icons.share,
                           label: 'Share',
                           onTap: () {
-                            // Share image logic
+                            Share.shareXFiles([XFile(image.path)]);
                             Navigator.pop(context);
                           },
                         ),
@@ -162,16 +244,20 @@ class GalleryTab extends StatelessWidget {
                           icon: Icons.edit,
                           label: 'Edit Again',
                           onTap: () {
-                            // Re-edit image logic
+                            // Navigate to edit tab and pass the image
                             Navigator.pop(context);
+                            // Use EventBus to send the image to the edit tab
+                            EventBus().sendImageToEdit(File(image.path));
+                            // Navigate to edit tab
+                            DefaultTabController.of(context)?.animateTo(1);
                           },
                         ),
                         _ActionButton(
                           icon: Icons.delete_outline,
                           label: 'Delete',
                           onTap: () {
-                            // Delete image logic
                             Navigator.pop(context);
+                            _deleteImage(image.id);
                           },
                           isDestructive: true,
                         ),
@@ -185,6 +271,10 @@ class GalleryTab extends StatelessWidget {
         },
       ),
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -215,9 +305,20 @@ class GalleryItem extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.asset(
-            imagePath,
+          child: Image.file(
+            File(imagePath),
             fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              debugPrint('Error loading image: $error');
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(
+                  Icons.broken_image,
+                  size: 40,
+                  color: Colors.grey,
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -248,23 +349,15 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: SnaplyTheme.spaceMD,
-          vertical: SnaplyTheme.spaceSM,
-        ),
+        padding: const EdgeInsets.all(SnaplyTheme.spaceSM),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: color,
-            ),
+            Icon(icon, color: color),
             const SizedBox(height: 4),
             Text(
               label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: color,
-              ),
+              style: theme.textTheme.labelMedium?.copyWith(color: color),
             ),
           ],
         ),
